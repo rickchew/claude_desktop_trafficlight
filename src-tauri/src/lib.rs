@@ -26,6 +26,7 @@ pub struct AppState {
 
 /// 状态响应载荷
 #[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct StatePayload {
     pub state: String,
     pub color_group: String,
