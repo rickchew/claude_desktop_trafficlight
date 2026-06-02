@@ -18,6 +18,10 @@
   });
 
   onMount(async () => {
+    // 屏蔽 WebView 默认右键菜单（返回/刷新/另存为等浏览器菜单）
+    const preventCtx = (e: MouseEvent) => e.preventDefault();
+    document.addEventListener("contextmenu", preventCtx);
+
     await loadCurrentSkin();
 
     // 监听状态变化
@@ -42,6 +46,7 @@
     });
 
     return () => {
+      document.removeEventListener("contextmenu", preventCtx);
       unlistenState();
       unlistenSkin();
     };
