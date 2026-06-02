@@ -12,6 +12,14 @@
   let animation = $state<AnimationType>("off");
   let label = $state("已停止");
   let skin = $state<Skin | null>(null);
+  let source = $state("");
+
+  // 来源中文映射
+  const sourceLabels: Record<string, string> = {
+    files: "文件监听",
+    process: "子进程",
+    simulation: "模拟",
+  };
 
   // 订阅皮肤 store
   $effect(() => {
@@ -49,10 +57,16 @@
       };
     });
 
+    // 监听监控模式变化
+    const unlistenSource = await listen<{ source: string }>("overlay:source-change", (event) => {
+      source = event.payload.source;
+    });
+
     return () => {
       document.removeEventListener("contextmenu", onContextMenu);
       unlistenState();
       unlistenSkin();
+      unlistenSource();
     };
   });
 </script>
@@ -75,6 +89,9 @@
       <TrafficLight {colorGroup} {animation} {skin} />
     </div>
     <StatusText {label} {skin} />
+    {#if source && sourceLabels[source]}
+      <div class="source-indicator">{sourceLabels[source]}</div>
+    {/if}
   </div>
 </div>
 
@@ -115,5 +132,15 @@
 
   .traffic-light-wrapper {
     padding-top: 4px;
+  }
+
+  .source-indicator {
+    font-size: 9px;
+    color: var(--label-color, #EBEBF5);
+    opacity: 0.4;
+    text-align: center;
+    padding: 2px 12px 6px;
+    user-select: none;
+    letter-spacing: 0.5px;
   }
 </style>

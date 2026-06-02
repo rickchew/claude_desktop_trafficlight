@@ -64,7 +64,11 @@ pub struct SkinPayload {
 #[tauri::command]
 fn start_monitor(app: AppHandle, state: State<AppState>) -> Result<(), String> {
     let mut monitor = state.monitor.lock().map_err(|e| e.to_string())?;
-    monitor.start(app)
+    let result = monitor.start(app.clone());
+    if result.is_ok() {
+        emit_source(&app, "process");
+    }
+    result
 }
 
 /// 停止子进程监控
@@ -83,7 +87,11 @@ fn start_file_watcher(app: AppHandle, state: State<AppState>) -> Result<(), Stri
         *fw = Some(file_watcher::FileWatcher::new(None));
     }
     if let Some(ref mut watcher) = *fw {
-        watcher.start(app)
+        let result = watcher.start(app.clone());
+        if result.is_ok() {
+            emit_source(&app, "files");
+        }
+        result
     } else {
         Err("Failed to create file watcher".to_string())
     }
@@ -104,6 +112,7 @@ fn simulate_state(app: AppHandle, state_name: String) -> Result<(), String> {
         _ => return Err(format!("Unknown state: {}", state_name)),
     };
     let payload: StatePayload = ls.into();
+    emit_source(&app, "simulation");
     app.emit("overlay:state-change", &payload)
         .map_err(|e| e.to_string())
 }
@@ -159,6 +168,12 @@ fn exit_app(app: AppHandle, state: State<AppState>) -> Result<(), String> {
     Ok(())
 }
 
+/// 发射监控模式事件（前端显示当前模式）
+fn emit_source(app_handle: &AppHandle, source: &str) {
+    let payload = serde_json::json!({"source": source});
+    let _ = app_handle.emit("overlay:source-change", &payload);
+}
+
 /// 菜单事件处理器（托盘和右键弹出菜单共享）
 fn handle_menu_event(app_handle: &AppHandle, id: &str) {
     match id {
@@ -170,14 +185,42 @@ fn handle_menu_event(app_handle: &AppHandle, id: &str) {
                     let _ = window.show();
                     let _ = window.set_focus();
                 }
-            }
+            };
         }
         "quit" => {
             let state = app_handle.state::<AppState>();
             if let Ok(mut monitor) = state.monitor.lock() {
                 monitor.stop(app_handle);
-            }
+            };
             app_handle.exit(0);
+        }
+        "start-monitor" => {
+            let state = app_handle.state::<AppState>();
+            if let Ok(mut monitor) = state.monitor.lock() {
+                if monitor.start(app_handle.clone()).is_ok() {
+                    emit_source(app_handle, "process");
+                }
+            };
+        }
+        "start-filewatcher" => {
+            let state = app_handle.state::<AppState>();
+            if let Ok(mut fw) = state.file_watcher.lock() {
+                if fw.is_none() {
+                    *fw = Some(file_watcher::FileWatcher::new(None));
+                }
+                if let Some(ref mut watcher) = *fw {
+                    if watcher.start(app_handle.clone()).is_ok() {
+                        emit_source(app_handle, "files");
+                    }
+                }
+            };
+        }
+        "stop-monitor" => {
+            let state = app_handle.state::<AppState>();
+            if let Ok(mut monitor) = state.monitor.lock() {
+                monitor.stop(app_handle);
+            };
+            emit_source(app_handle, "none");
         }
         id if id.starts_with("skin-") => {
             let name = &id[5..];
@@ -247,10 +290,21 @@ async fn show_context_menu(app: AppHandle, state: State<'_, AppState>, _x: f64, 
     }
     let debug_submenu = debug_sub.build().map_err(|e| e.to_string())?;
 
+    let start_mon = MenuItemBuilder::with_id("start-monitor", "启动子进程监控")
+        .build(&app).map_err(|e| e.to_string())?;
+    let start_fw = MenuItemBuilder::with_id("start-filewatcher", "启动文件监听")
+        .build(&app).map_err(|e| e.to_string())?;
+    let stop_mon = MenuItemBuilder::with_id("stop-monitor", "停止监控")
+        .build(&app).map_err(|e| e.to_string())?;
+
     let quit = MenuItemBuilder::with_id("quit", "退出")
         .build(&app).map_err(|e| e.to_string())?;
 
     let menu = MenuBuilder::new(&app)
+        .item(&start_mon)
+        .item(&start_fw)
+        .item(&stop_mon)
+        .separator()
         .item(&skin_submenu)
         .separator()
         .item(&debug_submenu)
@@ -300,12 +354,21 @@ fn setup_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
     }
     let debug_submenu = debug_sub.build()?;
 
+    // 监控菜单项
+    let start_mon = MenuItemBuilder::with_id("start-monitor", "启动子进程监控").build(app)?;
+    let start_fw = MenuItemBuilder::with_id("start-filewatcher", "启动文件监听").build(app)?;
+    let stop_mon = MenuItemBuilder::with_id("stop-monitor", "停止监控").build(app)?;
+
     // 主菜单项
     let toggle = MenuItemBuilder::with_id("toggle", "显示/隐藏窗口").build(app)?;
     let quit = MenuItemBuilder::with_id("quit", "退出").build(app)?;
 
     let menu = MenuBuilder::new(app)
         .item(&toggle)
+        .separator()
+        .item(&start_mon)
+        .item(&start_fw)
+        .item(&stop_mon)
         .separator()
         .item(&skin_submenu)
         .item(&debug_submenu)
@@ -384,6 +447,22 @@ pub fn run() {
             // 设置系统托盘
             if let Err(e) = setup_tray(app.handle()) {
                 eprintln!("Failed to setup tray: {}", e);
+            }
+
+            // 自动启动文件监听（Hooks 模式）
+            {
+                let handle = app.handle().clone();
+                let state = handle.state::<AppState>();
+                if let Ok(mut fw) = state.file_watcher.lock() {
+                    if fw.is_none() {
+                        *fw = Some(file_watcher::FileWatcher::new(None));
+                    }
+                    if let Some(ref mut watcher) = *fw {
+                        if watcher.start(handle.clone()).is_ok() {
+                            emit_source(&handle, "files");
+                        }
+                    }
+                };
             }
 
             Ok(())
