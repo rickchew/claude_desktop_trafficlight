@@ -13,8 +13,6 @@
   let label = $state("已停止");
   let skin = $state<Skin | null>(null);
   let showMenu = $state(false);
-  let menuX = $state(0);
-  let menuY = $state(0);
   let skinNames = $state<string[]>([]);
 
   // 订阅皮肤 store
@@ -25,14 +23,11 @@
   // 右键菜单
   function handleContextMenu(e: MouseEvent) {
     e.preventDefault();
-    menuX = e.clientX;
-    menuY = e.clientY;
-    showMenu = true;
-
     // 拉取最新皮肤列表
     loadSkinList().then((list) => {
       skinNames = list;
     });
+    showMenu = true;
   }
 
   // 关闭菜单
@@ -112,7 +107,7 @@
 
 <div
   class="overlay"
-  class:show-menu={showMenu}
+  class:menu-open={showMenu}
   style="
     --bg-color: {skin?.background.color ?? '#1C1C1E'};
     --bg-opacity: {skin?.background.opacity ?? 0.85};
@@ -122,44 +117,46 @@
   "
   oncontextmenu={handleContextMenu}
 >
-  <!-- 拖拽区域 -->
-  <div class="drag-region" data-tauri-drag-region>
+  <!-- 拖拽区域（菜单打开时缩小） -->
+  <div class="drag-region" class:menu-open={showMenu} data-tauri-drag-region>
     <div class="traffic-light-wrapper">
       <TrafficLight {colorGroup} {animation} {skin} />
     </div>
     <StatusText {label} {skin} />
   </div>
 
-  <!-- 右键菜单 -->
+  <!-- 底部弹出菜单面板 -->
   {#if showMenu}
     <!-- svelte-ignore a11y_click_events_have_key_events -->
-    <div
-      class="context-menu"
-      style="left: {menuX}px; top: {menuY}px;"
-      role="menu"
-    >
-      <div class="menu-header">皮肤切换</div>
-      {#each skinNames as name}
-        <button
-          class="menu-item"
-          class:active={name === skin?.name}
-          onclick={() => handleSwitchSkin(name)}
-          role="menuitem"
-        >
-          {name}
-        </button>
-      {/each}
-      <div class="menu-divider"></div>
-      <div class="menu-header">调试</div>
-      <button class="menu-item" onclick={() => simulateState("starting")} role="menuitem">启动</button>
-      <button class="menu-item" onclick={() => simulateState("working")} role="menuitem">工作</button>
-      <button class="menu-item" onclick={() => simulateState("thinking")} role="menuitem">思考</button>
-      <button class="menu-item" onclick={() => simulateState("attention")} role="menuitem">交互</button>
-      <button class="menu-item" onclick={() => simulateState("error")} role="menuitem">错误</button>
-      <button class="menu-item" onclick={() => simulateState("idle")} role="menuitem">空闲</button>
-      <button class="menu-item" onclick={() => simulateState("done")} role="menuitem">完成</button>
-      <div class="menu-divider"></div>
-      <button class="menu-item exit" onclick={handleExit} role="menuitem">退出</button>
+    <div class="menu-panel" role="menu" onclick={(e) => e.stopPropagation()}>
+      <div class="menu-scroll">
+        <div class="menu-section">
+          <div class="menu-header">皮肤切换</div>
+          {#each skinNames as name}
+            <button
+              class="menu-item"
+              class:active={name === skin?.name}
+              onclick={() => handleSwitchSkin(name)}
+              role="menuitem"
+            >
+              {name}
+            </button>
+          {/each}
+        </div>
+        <div class="menu-divider"></div>
+        <div class="menu-section">
+          <div class="menu-header">调试</div>
+          <button class="menu-item" onclick={() => simulateState("starting")} role="menuitem">启动</button>
+          <button class="menu-item" onclick={() => simulateState("working")} role="menuitem">工作</button>
+          <button class="menu-item" onclick={() => simulateState("thinking")} role="menuitem">思考</button>
+          <button class="menu-item" onclick={() => simulateState("attention")} role="menuitem">交互</button>
+          <button class="menu-item" onclick={() => simulateState("error")} role="menuitem">错误</button>
+          <button class="menu-item" onclick={() => simulateState("idle")} role="menuitem">空闲</button>
+          <button class="menu-item" onclick={() => simulateState("done")} role="menuitem">完成</button>
+        </div>
+        <div class="menu-divider"></div>
+        <button class="menu-item exit" onclick={handleExit} role="menuitem">退出</button>
+      </div>
     </div>
   {/if}
 </div>
@@ -184,6 +181,8 @@
     overflow: hidden;
     backdrop-filter: blur(20px);
     -webkit-backdrop-filter: blur(20px);
+    display: flex;
+    flex-direction: column;
   }
 
   .drag-region {
@@ -191,9 +190,16 @@
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    width: 100%;
-    height: 100%;
+    flex: 1;
+    min-height: 0;
     cursor: grab;
+    transition: flex 0.2s ease, padding 0.2s ease;
+    padding: 8px 0;
+  }
+
+  .drag-region.menu-open {
+    flex: 0 0 auto;
+    padding: 4px 0;
   }
 
   .drag-region:active {
@@ -201,21 +207,42 @@
   }
 
   .traffic-light-wrapper {
-    padding-top: 8px;
+    padding-top: 4px;
   }
 
-  /* 右键菜单 */
-  .context-menu {
-    position: fixed;
+  /* 底部弹出菜单面板 */
+  .menu-panel {
+    flex: 1;
+    min-height: 0;
     background: #2C2C2E;
-    border: 1px solid #3A3A3C;
-    border-radius: 12px;
-    padding: 6px;
-    min-width: 160px;
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
-    z-index: 1000;
-    backdrop-filter: blur(20px);
-    -webkit-backdrop-filter: blur(20px);
+    border-top: 1px solid #3A3A3C;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .menu-scroll {
+    flex: 1;
+    overflow-y: auto;
+    padding: 4px 0;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .menu-scroll::-webkit-scrollbar {
+    width: 3px;
+  }
+
+  .menu-scroll::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .menu-scroll::-webkit-scrollbar-thumb {
+    background: #3A3A3C;
+    border-radius: 2px;
+  }
+
+  .menu-section {
+    padding: 0 4px;
   }
 
   .menu-header {
