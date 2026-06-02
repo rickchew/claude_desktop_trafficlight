@@ -2,5 +2,5 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {
-    d_temp_overlay_lib::run()
+    claude_code_overlay_lib::run()
 }

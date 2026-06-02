@@ -1,0 +1,41 @@
+{
+  "name": "default",
+  "description": "经典红绿灯风格",
+  "lights": {
+    "red": {
+      "on": "#FF3B30",
+      "off": "#4A1A18",
+      "glow": "rgba(255, 59, 48, 0.6)"
+    },
+    "yellow": {
+      "on": "#FFD60A",
+      "off": "#4A3A0A",
+      "glow": "rgba(255, 214, 10, 0.6)"
+    },
+    "green": {
+      "on": "#30D158",
+      "off": "#1A3A22",
+      "glow": "rgba(48, 209, 88, 0.6)"
+    },
+    "gray": {
+      "on": "#8E8E93",
+      "off": "#3A3A3C",
+      "glow": null
+    }
+  },
+  "background": {
+    "color": "#1C1C1E",
+    "opacity": 0.85,
+    "blur": true
+  },
+  "border": {
+    "color": "#3A3A3C",
+    "radius": "16px",
+    "width": "1px"
+  },
+  "label": {
+    "color": "#EBEBF5",
+    "size": "11px",
+    "fontFamily": "system-ui, -apple-system, sans-serif"
+  }
+}

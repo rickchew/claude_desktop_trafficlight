@@ -1,0 +1,41 @@
+{
+  "name": "neon",
+  "description": "霓虹灯风格",
+  "lights": {
+    "red": {
+      "on": "#FF0055",
+      "off": "#3D0015",
+      "glow": "rgba(255, 0, 85, 0.8)"
+    },
+    "yellow": {
+      "on": "#FFD700",
+      "off": "#3D3300",
+      "glow": "rgba(255, 215, 0, 0.8)"
+    },
+    "green": {
+      "on": "#00FF88",
+      "off": "#003D1F",
+      "glow": "rgba(0, 255, 136, 0.8)"
+    },
+    "gray": {
+      "on": "#666680",
+      "off": "#2A2A35",
+      "glow": null
+    }
+  },
+  "background": {
+    "color": "#0A0A0F",
+    "opacity": 0.9,
+    "blur": true
+  },
+  "border": {
+    "color": "#1A1A2E",
+    "radius": "12px",
+    "width": "2px"
+  },
+  "label": {
+    "color": "#8888AA",
+    "size": "10px",
+    "fontFamily": "monospace"
+  }
+}

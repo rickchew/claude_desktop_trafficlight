@@ -1,0 +1,41 @@
+{
+  "name": "minimal",
+  "description": "极简扁平风格",
+  "lights": {
+    "red": {
+      "on": "#E53935",
+      "off": "#37474F",
+      "glow": null
+    },
+    "yellow": {
+      "on": "#FFB300",
+      "off": "#37474F",
+      "glow": null
+    },
+    "green": {
+      "on": "#43A047",
+      "off": "#37474F",
+      "glow": null
+    },
+    "gray": {
+      "on": "#78909C",
+      "off": "#37474F",
+      "glow": null
+    }
+  },
+  "background": {
+    "color": "#263238",
+    "opacity": 0.75,
+    "blur": false
+  },
+  "border": {
+    "color": "#37474F",
+    "radius": "8px",
+    "width": "0px"
+  },
+  "label": {
+    "color": "#B0BEC5",
+    "size": "10px",
+    "fontFamily": "system-ui, sans-serif"
+  }
+}

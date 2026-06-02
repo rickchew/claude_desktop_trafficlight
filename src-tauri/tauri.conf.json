@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "d-temp-overlay",
+  "productName": "Claude Code Overlay",
   "version": "0.1.0",
-  "identifier": "com.user.d-temp-overlay",
+  "identifier": "com.claude-code.overlay",
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:1420",
@@ -12,9 +12,15 @@
   "app": {
     "windows": [
       {
-        "title": "d-temp-overlay",
-        "width": 800,
-        "height": 600
+        "title": "Claude Code Overlay",
+        "width": 130,
+        "height": 280,
+        "resizable": false,
+        "decorations": false,
+        "transparent": true,
+        "alwaysOnTop": true,
+        "skipTaskbar": true,
+        "visible": true
       }
     ],
     "security": {

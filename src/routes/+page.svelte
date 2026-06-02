@@ -1,156 +1,262 @@
-<script>
+<script lang="ts">
+  import { onMount } from "svelte";
+  import { listen } from "@tauri-apps/api/event";
   import { invoke } from "@tauri-apps/api/core";
+  import TrafficLight from "$lib/TrafficLight.svelte";
+  import StatusText from "$lib/StatusText.svelte";
+  import { currentSkin, loadCurrentSkin, loadSkinList, switchSkin } from "$lib/SkinManager";
+  import type { StatePayload, LightState, ColorGroup, AnimationType, SkinPayload, Skin } from "$lib/types";
 
-  let name = $state("");
-  let greetMsg = $state("");
+  let state = $state<LightState>("stopped");
+  let colorGroup = $state<ColorGroup>("gray");
+  let animation = $state<AnimationType>("off");
+  let label = $state("已停止");
+  let skin = $state<Skin | null>(null);
+  let showMenu = $state(false);
+  let menuX = $state(0);
+  let menuY = $state(0);
+  let skinNames = $state<string[]>([]);
 
-  async function greet(event) {
-    event.preventDefault();
-    // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
-    greetMsg = await invoke("greet", { name });
+  // 订阅皮肤 store
+  $effect(() => {
+    skin = $currentSkin;
+  });
+
+  // 右键菜单
+  function handleContextMenu(e: MouseEvent) {
+    e.preventDefault();
+    menuX = e.clientX;
+    menuY = e.clientY;
+    showMenu = true;
+
+    // 拉取最新皮肤列表
+    loadSkinList().then((list) => {
+      skinNames = list;
+    });
   }
+
+  // 关闭菜单
+  function closeMenu() {
+    showMenu = false;
+  }
+
+  // 切换皮肤
+  async function handleSwitchSkin(name: string) {
+    await switchSkin(name);
+    closeMenu();
+  }
+
+  // 退出应用
+  async function handleExit() {
+    try {
+      await invoke("exit_app");
+    } catch (e) {
+      console.error("Exit failed:", e);
+    }
+  }
+
+  // 切换模式 - 模拟状态（测试用）
+  async function simulateState(s: string) {
+    try {
+      await invoke("simulate_state", { stateName: s });
+    } catch (e) {
+      console.error("Simulate state failed:", e);
+    }
+    closeMenu();
+  }
+
+  onMount(async () => {
+    // 加载皮肤
+    await loadCurrentSkin();
+    await loadSkinList();
+
+    // 监听状态变化
+    const unlisten = await listen<StatePayload>("overlay:state-change", (event) => {
+      state = event.payload.state;
+      colorGroup = event.payload.colorGroup;
+      animation = event.payload.animation;
+      label = event.payload.label;
+    });
+
+    // 监听皮肤变化
+    const unlistenSkin = await listen<SkinPayload>("overlay:skin-change", (event) => {
+      const p = event.payload;
+      skin = {
+        name: p.name,
+        description: p.description,
+        lights: p.lights,
+        background: p.background,
+        border: p.border,
+        label: p.label,
+      };
+    });
+
+    // 点击外部关闭菜单
+    const handleClick = () => {
+      if (showMenu) closeMenu();
+    };
+    document.addEventListener("click", handleClick);
+
+    return () => {
+      unlisten();
+      unlistenSkin();
+      document.removeEventListener("click", handleClick);
+    };
+  });
 </script>
 
-<main class="container">
-  <h1>Welcome to Tauri + Svelte</h1>
+<svelte:head>
+  <title>Claude Code Overlay</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+</svelte:head>
 
-  <div class="row">
-    <a href="https://vite.dev" target="_blank">
-      <img src="/vite.svg" class="logo vite" alt="Vite Logo" />
-    </a>
-    <a href="https://tauri.app" target="_blank">
-      <img src="/tauri.svg" class="logo tauri" alt="Tauri Logo" />
-    </a>
-    <a href="https://svelte.dev" target="_blank">
-      <img src="/svelte.svg" class="logo svelte-kit" alt="SvelteKit Logo" />
-    </a>
+<div
+  class="overlay"
+  class:show-menu={showMenu}
+  style="
+    --bg-color: {skin?.background.color ?? '#1C1C1E'};
+    --bg-opacity: {skin?.background.opacity ?? 0.85};
+    --border-color: {skin?.border.color ?? '#3A3A3C'};
+    --border-radius: {skin?.border.radius ?? '16px'};
+    --border-width: {skin?.border.width ?? '1px'};
+  "
+  oncontextmenu={handleContextMenu}
+>
+  <!-- 拖拽区域 -->
+  <div class="drag-region" data-tauri-drag-region>
+    <div class="traffic-light-wrapper">
+      <TrafficLight {colorGroup} {animation} {skin} />
+    </div>
+    <StatusText {label} {skin} />
   </div>
-  <p>Click on the Tauri, Vite, and SvelteKit logos to learn more.</p>
 
-  <form class="row" onsubmit={greet}>
-    <input id="greet-input" placeholder="Enter a name..." bind:value={name} />
-    <button type="submit">Greet</button>
-  </form>
-  <p>{greetMsg}</p>
-</main>
+  <!-- 右键菜单 -->
+  {#if showMenu}
+    <!-- svelte-ignore a11y_click_events_have_key_events -->
+    <div
+      class="context-menu"
+      style="left: {menuX}px; top: {menuY}px;"
+      role="menu"
+    >
+      <div class="menu-header">皮肤切换</div>
+      {#each skinNames as name}
+        <button
+          class="menu-item"
+          class:active={name === skin?.name}
+          onclick={() => handleSwitchSkin(name)}
+          role="menuitem"
+        >
+          {name}
+        </button>
+      {/each}
+      <div class="menu-divider"></div>
+      <div class="menu-header">调试</div>
+      <button class="menu-item" onclick={() => simulateState("starting")} role="menuitem">启动</button>
+      <button class="menu-item" onclick={() => simulateState("working")} role="menuitem">工作</button>
+      <button class="menu-item" onclick={() => simulateState("thinking")} role="menuitem">思考</button>
+      <button class="menu-item" onclick={() => simulateState("attention")} role="menuitem">交互</button>
+      <button class="menu-item" onclick={() => simulateState("error")} role="menuitem">错误</button>
+      <button class="menu-item" onclick={() => simulateState("idle")} role="menuitem">空闲</button>
+      <button class="menu-item" onclick={() => simulateState("done")} role="menuitem">完成</button>
+      <div class="menu-divider"></div>
+      <button class="menu-item exit" onclick={handleExit} role="menuitem">退出</button>
+    </div>
+  {/if}
+</div>
 
 <style>
-.logo.vite:hover {
-  filter: drop-shadow(0 0 2em #747bff);
-}
-
-.logo.svelte-kit:hover {
-  filter: drop-shadow(0 0 2em #ff3e00);
-}
-
-:root {
-  font-family: Inter, Avenir, Helvetica, Arial, sans-serif;
-  font-size: 16px;
-  line-height: 24px;
-  font-weight: 400;
-
-  color: #0f0f0f;
-  background-color: #f6f6f6;
-
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  -webkit-text-size-adjust: 100%;
-}
-
-.container {
-  margin: 0;
-  padding-top: 10vh;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  text-align: center;
-}
-
-.logo {
-  height: 6em;
-  padding: 1.5em;
-  will-change: filter;
-  transition: 0.75s;
-}
-
-.logo.tauri:hover {
-  filter: drop-shadow(0 0 2em #24c8db);
-}
-
-.row {
-  display: flex;
-  justify-content: center;
-}
-
-a {
-  font-weight: 500;
-  color: #646cff;
-  text-decoration: inherit;
-}
-
-a:hover {
-  color: #535bf2;
-}
-
-h1 {
-  text-align: center;
-}
-
-input,
-button {
-  border-radius: 8px;
-  border: 1px solid transparent;
-  padding: 0.6em 1.2em;
-  font-size: 1em;
-  font-weight: 500;
-  font-family: inherit;
-  color: #0f0f0f;
-  background-color: #ffffff;
-  transition: border-color 0.25s;
-  box-shadow: 0 2px 2px rgba(0, 0, 0, 0.2);
-}
-
-button {
-  cursor: pointer;
-}
-
-button:hover {
-  border-color: #396cd8;
-}
-button:active {
-  border-color: #396cd8;
-  background-color: #e8e8e8;
-}
-
-input,
-button {
-  outline: none;
-}
-
-#greet-input {
-  margin-right: 5px;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    color: #f6f6f6;
-    background-color: #2f2f2f;
+  :global(body) {
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    background: transparent;
+    font-family: system-ui, -apple-system, sans-serif;
   }
 
-  a:hover {
-    color: #24c8db;
+  .overlay {
+    position: relative;
+    width: 100vw;
+    height: 100vh;
+    background: var(--bg-color);
+    opacity: var(--bg-opacity);
+    border: var(--border-width) solid var(--border-color);
+    border-radius: var(--border-radius);
+    overflow: hidden;
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
   }
 
-  input,
-  button {
-    color: #ffffff;
-    background-color: #0f0f0f98;
+  .drag-region {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 100%;
+    cursor: grab;
   }
-  button:active {
-    background-color: #0f0f0f69;
-  }
-}
 
+  .drag-region:active {
+    cursor: grabbing;
+  }
+
+  .traffic-light-wrapper {
+    padding-top: 8px;
+  }
+
+  /* 右键菜单 */
+  .context-menu {
+    position: fixed;
+    background: #2C2C2E;
+    border: 1px solid #3A3A3C;
+    border-radius: 12px;
+    padding: 6px;
+    min-width: 160px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+    z-index: 1000;
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+  }
+
+  .menu-header {
+    padding: 6px 12px 4px;
+    font-size: 10px;
+    font-weight: 600;
+    color: #8E8E93;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  .menu-item {
+    display: block;
+    width: 100%;
+    padding: 8px 12px;
+    border: none;
+    background: none;
+    color: #EBEBF5;
+    font-size: 13px;
+    text-align: left;
+    cursor: pointer;
+    border-radius: 8px;
+    transition: background 0.15s ease;
+  }
+
+  .menu-item:hover {
+    background: rgba(255, 255, 255, 0.1);
+  }
+
+  .menu-item.active {
+    color: #30D158;
+    font-weight: 500;
+  }
+
+  .menu-item.exit {
+    color: #FF453A;
+  }
+
+  .menu-divider {
+    height: 1px;
+    background: #3A3A3C;
+    margin: 4px 8px;
+  }
 </style>
