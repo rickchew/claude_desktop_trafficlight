@@ -12,7 +12,7 @@ use serde::Serialize;
 use skins::SkinManager;
 use std::sync::Mutex;
 use tauri::{
-    menu::{MenuBuilder, MenuItemBuilder, SubmenuBuilder},
+    menu::{ContextMenu, MenuBuilder, MenuItemBuilder, SubmenuBuilder},
     tray::TrayIconBuilder,
     AppHandle, Emitter, Manager, State,
 };
@@ -159,6 +159,114 @@ fn exit_app(app: AppHandle, state: State<AppState>) -> Result<(), String> {
     Ok(())
 }
 
+/// 菜单事件处理器（托盘和右键弹出菜单共享）
+fn handle_menu_event(app_handle: &AppHandle, id: &str) {
+    match id {
+        "toggle" => {
+            if let Some(window) = app_handle.get_webview_window("main") {
+                if window.is_visible().unwrap_or(true) {
+                    let _ = window.hide();
+                } else {
+                    let _ = window.show();
+                    let _ = window.set_focus();
+                }
+            }
+        }
+        "quit" => {
+            let state = app_handle.state::<AppState>();
+            if let Ok(mut monitor) = state.monitor.lock() {
+                monitor.stop(app_handle);
+            }
+            app_handle.exit(0);
+        }
+        id if id.starts_with("skin-") => {
+            let name = &id[5..];
+            let state = app_handle.state::<AppState>();
+            if let Ok(mut sm) = state.skin_manager.lock() {
+                if let Some(skin) = sm.switch(name) {
+                    let payload = SkinPayload {
+                        name: skin.name.clone(),
+                        description: skin.description.clone(),
+                        lights: skin.lights.clone(),
+                        background: skin.background.clone(),
+                        border: skin.border.clone(),
+                        label: skin.label.clone(),
+                    };
+                    let _ = app_handle.emit("overlay:skin-change", &payload);
+                }
+            };
+        }
+        id if id.starts_with("simulate-") => {
+            let state_name = &id[9..];
+            let ls = match state_name {
+                "starting" => state::LightState::Starting,
+                "working" => state::LightState::Working,
+                "thinking" => state::LightState::Thinking,
+                "attention" => state::LightState::Attention,
+                "error" => state::LightState::Error,
+                "idle" => state::LightState::Idle,
+                "done" => state::LightState::Done,
+                _ => return,
+            };
+            let payload: StatePayload = ls.into();
+            let _ = app_handle.emit("overlay:state-change", &payload);
+        }
+        _ => {}
+    }
+}
+
+/// 显示右键上下文菜单（弹出原生系统菜单）
+#[tauri::command]
+async fn show_context_menu(app: AppHandle, state: State<'_, AppState>, _x: f64, _y: f64) -> Result<(), String> {
+    let skin_names = {
+        let sm = state.skin_manager.lock().map_err(|e| e.to_string())?;
+        sm.list().into_iter().map(|s| s.to_string()).collect::<Vec<_>>()
+    };
+
+    let mut skin_sub = SubmenuBuilder::new(&app, "切换皮肤");
+    for name in &skin_names {
+        let item = MenuItemBuilder::with_id(format!("skin-{}", name), name.as_str())
+            .build(&app).map_err(|e| e.to_string())?;
+        skin_sub = skin_sub.item(&item);
+    }
+    let skin_submenu = skin_sub.build().map_err(|e| e.to_string())?;
+
+    let mut debug_sub = SubmenuBuilder::new(&app, "调试");
+    for (id, label) in &[
+        ("simulate-starting", "启动中"),
+        ("simulate-working", "工作中"),
+        ("simulate-thinking", "思考中"),
+        ("simulate-attention", "需要交互"),
+        ("simulate-error", "错误"),
+        ("simulate-idle", "空闲"),
+        ("simulate-done", "完成"),
+    ] {
+        let item = MenuItemBuilder::with_id(*id, *label)
+            .build(&app).map_err(|e| e.to_string())?;
+        debug_sub = debug_sub.item(&item);
+    }
+    let debug_submenu = debug_sub.build().map_err(|e| e.to_string())?;
+
+    let quit = MenuItemBuilder::with_id("quit", "退出")
+        .build(&app).map_err(|e| e.to_string())?;
+
+    let menu = MenuBuilder::new(&app)
+        .item(&skin_submenu)
+        .separator()
+        .item(&debug_submenu)
+        .separator()
+        .item(&quit)
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    let window = app.get_webview_window("main").ok_or("No main window".to_string())?;
+
+    app.run_on_main_thread(move || {
+        let _ = menu.popup(window.as_ref().window().clone());
+    })
+    .map_err(|e| e.to_string())
+}
+
 /// 设置系统托盘
 fn setup_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
     // 获取皮肤列表用于菜单
@@ -215,63 +323,9 @@ fn setup_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
     }
 
     // 菜单事件处理
-    let app_handle = app.clone();
-    tray = tray.on_menu_event(move |_app, event| {
-        let id = event.id().as_ref().to_string();
-
-        // 显示/隐藏
-        if id == "toggle" {
-            if let Some(window) = app_handle.get_webview_window("main") {
-                if window.is_visible().unwrap_or(true) {
-                    let _ = window.hide();
-                } else {
-                    let _ = window.show();
-                    let _ = window.set_focus();
-                }
-            }
-            return;
-        }
-
-        // 退出
-        if id == "quit" {
-            app_handle.exit(0);
-            return;
-        }
-
-        // 切换皮肤
-        if let Some(ref name) = id.strip_prefix("skin-") {
-            let state = app_handle.state::<AppState>();
-            if let Ok(mut sm) = state.skin_manager.lock() {
-                if let Some(skin) = sm.switch(name) {
-                    let payload = SkinPayload {
-                        name: skin.name.clone(),
-                        description: skin.description.clone(),
-                        lights: skin.lights.clone(),
-                        background: skin.background.clone(),
-                        border: skin.border.clone(),
-                        label: skin.label.clone(),
-                    };
-                    let _ = app_handle.emit("overlay:skin-change", &payload);
-                }
-            }
-            return;
-        }
-
-        // 模拟状态
-        if let Some(state_name) = id.strip_prefix("simulate-") {
-            let ls = match state_name {
-                "starting" => state::LightState::Starting,
-                "working" => state::LightState::Working,
-                "thinking" => state::LightState::Thinking,
-                "attention" => state::LightState::Attention,
-                "error" => state::LightState::Error,
-                "idle" => state::LightState::Idle,
-                "done" => state::LightState::Done,
-                _ => return,
-            };
-            let payload: StatePayload = ls.into();
-            let _ = app_handle.emit("overlay:state-change", &payload);
-        }
+    tray = tray.on_menu_event(move |tray, event| {
+        let app = tray.app_handle();
+        handle_menu_event(&app, event.id().as_ref());
     });
 
     tray.build(app)?;
@@ -302,8 +356,14 @@ pub fn run() {
             get_current_skin,
             list_skins,
             exit_app,
+            show_context_menu,
         ])
         .setup(|app| {
+            // 全局菜单事件处理器（右键弹出菜单等非托盘菜单）
+            app.on_menu_event(|app_handle, event| {
+                handle_menu_event(app_handle, event.id().as_ref());
+            });
+
             // 发送初始皮肤
             let handle = app.handle().clone();
             let sm = handle.state::<AppState>();

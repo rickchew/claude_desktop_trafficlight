@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { listen } from "@tauri-apps/api/event";
+  import { invoke } from "@tauri-apps/api/core";
   import TrafficLight from "$lib/TrafficLight.svelte";
   import StatusText from "$lib/StatusText.svelte";
   import { currentSkin, loadCurrentSkin } from "$lib/SkinManager";
@@ -18,9 +19,12 @@
   });
 
   onMount(async () => {
-    // 屏蔽 WebView 默认右键菜单（返回/刷新/另存为等浏览器菜单）
-    const preventCtx = (e: MouseEvent) => e.preventDefault();
-    document.addEventListener("contextmenu", preventCtx);
+    // 右键点击 → 弹出原生系统菜单（切换皮肤 / 调试 / 退出）
+    const onContextMenu = (e: MouseEvent) => {
+      e.preventDefault();
+      invoke("show_context_menu", { x: e.screenX, y: e.screenY });
+    };
+    document.addEventListener("contextmenu", onContextMenu);
 
     await loadCurrentSkin();
 
@@ -46,7 +50,7 @@
     });
 
     return () => {
-      document.removeEventListener("contextmenu", preventCtx);
+      document.removeEventListener("contextmenu", onContextMenu);
       unlistenState();
       unlistenSkin();
     };
