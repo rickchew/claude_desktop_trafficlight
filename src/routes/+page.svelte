@@ -2,10 +2,10 @@
   import { onMount } from "svelte";
   import { listen } from "@tauri-apps/api/event";
   import { invoke } from "@tauri-apps/api/core";
-  import { getCurrentWindow } from "@tauri-apps/api/window";
+  import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
   import TrafficLight from "$lib/TrafficLight.svelte";
   import StatusText from "$lib/StatusText.svelte";
-  import { currentSkin, loadCurrentSkin, loadSkinList, switchSkin } from "$lib/SkinManager";
+  import { currentSkin, loadCurrentSkin, loadSkinList } from "$lib/SkinManager";
   import type { StatePayload, LightState, ColorGroup, AnimationType, SkinPayload, Skin } from "$lib/types";
 
   let state = $state<LightState>("stopped");
@@ -13,71 +13,86 @@
   let animation = $state<AnimationType>("off");
   let label = $state("已停止");
   let skin = $state<Skin | null>(null);
-  let showMenu = $state(false);
-  let skinNames = $state<string[]>([]);
-
-  const OVERLAY_HEIGHT = 280;
-  const MENU_HEIGHT = 400;
+  let skinList = $state<string[]>([]);
+  let menuWindow: WebviewWindow | null = null;
 
   // 订阅皮肤 store
   $effect(() => {
     skin = $currentSkin;
   });
 
-  // 右键菜单
-  function handleContextMenu(e: MouseEvent) {
+  // 右键点击 → 弹出浮动菜单窗口
+  async function handleContextMenu(e: MouseEvent) {
     e.preventDefault();
-    loadSkinList().then((list) => {
-      skinNames = list;
+
+    // 如果已有菜单窗口，先关闭
+    if (menuWindow) {
+      try { menuWindow.close(); } catch {}
+      menuWindow = null;
+    }
+
+    // 获取最新皮肤列表
+    const list: string[] = await invoke("list_skins");
+    skinList = list;
+
+    // 构建菜单窗口 URL（通过 hash 传递数据）
+    const data = encodeURIComponent(JSON.stringify({
+      skins: list,
+      currentSkin: skin?.name || "default",
+      label,
+    }));
+    const url = `/menu#${data}`;
+
+    // 计算菜单位置（在鼠标附近，但确保不超出屏幕）
+    const winWidth = 180;
+    const winHeight = 380;
+    const screenW = window.screen.availWidth;
+    const screenH = window.screen.availHeight;
+    let x = e.screenX;
+    let y = e.screenY;
+    if (x + winWidth > screenW) x = screenW - winWidth - 10;
+    if (y + winHeight > screenH) y = screenH - winHeight - 10;
+    if (x < 0) x = 10;
+    if (y < 0) y = 10;
+
+    menuWindow = new WebviewWindow("context-menu", {
+      url,
+      width: winWidth,
+      height: winHeight,
+      decorations: false,
+      transparent: true,
+      alwaysOnTop: true,
+      resizable: false,
+      x,
+      y,
+      focus: true,
+      visible: true,
     });
-    showMenu = true;
-    // 拉高窗口显示完整菜单
-    getCurrentWindow().setSize({ width: 130, height: MENU_HEIGHT });
-  }
 
-  // 关闭菜单
-  function closeMenu() {
-    showMenu = false;
-    // 恢复窗口大小
-    getCurrentWindow().setSize({ width: 130, height: OVERLAY_HEIGHT });
-  }
+    // 窗口创建失败时清理
+    menuWindow.once("tauri://error", () => {
+      menuWindow = null;
+    });
 
-  // 切换皮肤
-  async function handleSwitchSkin(name: string) {
-    await switchSkin(name);
-    closeMenu();
-  }
-
-  // 退出应用
-  async function handleExit() {
-    try {
-      await invoke("exit_app");
-    } catch (e) {
-      console.error("Exit failed:", e);
-    }
-  }
-
-  // 模拟状态（测试用）
-  async function simulateState(s: string) {
-    try {
-      await invoke("simulate_state", { stateName: s });
-    } catch (e) {
-      console.error("Simulate state failed:", e);
-    }
-    closeMenu();
+    // 窗口关闭时清理引用
+    menuWindow.once("tauri://close-requested", () => {
+      menuWindow = null;
+    });
   }
 
   onMount(async () => {
     await loadCurrentSkin();
     await loadSkinList();
 
-    const unlisten = await listen<StatePayload>("overlay:state-change", (event) => {
+    // 监听状态变化
+    const unlistenState = await listen<StatePayload>("overlay:state-change", (event) => {
       state = event.payload.state;
       colorGroup = event.payload.colorGroup;
       animation = event.payload.animation;
       label = event.payload.label;
     });
 
+    // 监听皮肤变化
     const unlistenSkin = await listen<SkinPayload>("overlay:skin-change", (event) => {
       const p = event.payload;
       skin = {
@@ -90,15 +105,9 @@
       };
     });
 
-    const handleClick = () => {
-      if (showMenu) closeMenu();
-    };
-    document.addEventListener("click", handleClick);
-
     return () => {
-      unlisten();
+      unlistenState();
       unlistenSkin();
-      document.removeEventListener("click", handleClick);
     };
   });
 </script>
@@ -117,48 +126,13 @@
   "
   oncontextmenu={handleContextMenu}
 >
-  {#if showMenu}
-    <!-- 全屏菜单 -->
-    <!-- svelte-ignore a11y_click_events_have_key_events -->
-    <div class="menu-fullscreen" role="menu" onclick={(e) => e.stopPropagation()}>
-      <div class="menu-scroll">
-        <div class="menu-section">
-          <div class="menu-header">皮肤切换</div>
-          {#each skinNames as name}
-            <button
-              class="menu-item"
-              class:active={name === skin?.name}
-              onclick={() => handleSwitchSkin(name)}
-              role="menuitem"
-            >
-              {name}
-            </button>
-          {/each}
-        </div>
-        <div class="menu-divider"></div>
-        <div class="menu-section">
-          <div class="menu-header">调试</div>
-          <button class="menu-item" onclick={() => simulateState("starting")} role="menuitem">启动中</button>
-          <button class="menu-item" onclick={() => simulateState("working")} role="menuitem">工作中</button>
-          <button class="menu-item" onclick={() => simulateState("thinking")} role="menuitem">思考中</button>
-          <button class="menu-item" onclick={() => simulateState("attention")} role="menuitem">需要交互</button>
-          <button class="menu-item" onclick={() => simulateState("error")} role="menuitem">错误</button>
-          <button class="menu-item" onclick={() => simulateState("idle")} role="menuitem">空闲</button>
-          <button class="menu-item" onclick={() => simulateState("done")} role="menuitem">完成</button>
-        </div>
-        <div class="menu-divider"></div>
-        <button class="menu-item exit" onclick={handleExit} role="menuitem">退出</button>
-      </div>
+  <!-- 红绿灯主界面 -->
+  <div class="drag-region" data-tauri-drag-region>
+    <div class="traffic-light-wrapper">
+      <TrafficLight {colorGroup} {animation} {skin} />
     </div>
-  {:else}
-    <!-- 红绿灯主界面 -->
-    <div class="drag-region" data-tauri-drag-region>
-      <div class="traffic-light-wrapper">
-        <TrafficLight {colorGroup} {animation} {skin} />
-      </div>
-      <StatusText {label} {skin} />
-    </div>
-  {/if}
+    <StatusText {label} {skin} />
+  </div>
 </div>
 
 <style>
@@ -198,80 +172,5 @@
 
   .traffic-light-wrapper {
     padding-top: 4px;
-  }
-
-  /* 全屏菜单 */
-  .menu-fullscreen {
-    width: 100%;
-    height: 100%;
-    background: #2C2C2E;
-    display: flex;
-    flex-direction: column;
-  }
-
-  .menu-scroll {
-    flex: 1;
-    overflow-y: auto;
-    padding: 8px 0;
-    -webkit-overflow-scrolling: touch;
-  }
-
-  .menu-scroll::-webkit-scrollbar {
-    width: 3px;
-  }
-
-  .menu-scroll::-webkit-scrollbar-track {
-    background: transparent;
-  }
-
-  .menu-scroll::-webkit-scrollbar-thumb {
-    background: #3A3A3C;
-    border-radius: 2px;
-  }
-
-  .menu-section {
-    padding: 0 4px;
-  }
-
-  .menu-header {
-    padding: 6px 12px 4px;
-    font-size: 10px;
-    font-weight: 600;
-    color: #8E8E93;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-  }
-
-  .menu-item {
-    display: block;
-    width: 100%;
-    padding: 8px 12px;
-    border: none;
-    background: none;
-    color: #EBEBF5;
-    font-size: 13px;
-    text-align: left;
-    cursor: pointer;
-    border-radius: 8px;
-    transition: background 0.15s ease;
-  }
-
-  .menu-item:hover {
-    background: rgba(255, 255, 255, 0.1);
-  }
-
-  .menu-item.active {
-    color: #30D158;
-    font-weight: 500;
-  }
-
-  .menu-item.exit {
-    color: #FF453A;
-  }
-
-  .menu-divider {
-    height: 1px;
-    background: #3A3A3C;
-    margin: 4px 8px;
   }
 </style>
