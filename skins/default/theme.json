@@ -29,9 +29,9 @@
     "blur": true
   },
   "border": {
-    "color": "#3A3A3C",
-    "radius": "16px",
-    "width": "1px"
+    "color": "transparent",
+    "radius": "12px",
+    "width": "0px"
   },
   "label": {
     "color": "#EBEBF5",
