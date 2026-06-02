@@ -1,0 +1,21 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm --version)",
+      "Bash(rustc --version)",
+      "Bash(cargo --version)",
+      "Bash(where rustc *)",
+      "Bash(where cargo *)",
+      "Bash(curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs)",
+      "Bash(sh -s -- -y)",
+      "Bash(npx create-tauri-app@latest *)",
+      "Bash(cd /d)",
+      "Bash(mkdir -p temp-overlay)",
+      "Bash(python3 *)",
+      "Bash(py *)",
+      "Bash(git init *)",
+      "Bash(git add *)",
+      "Bash(git commit -m 'Initial commit: Tauri v2 + Svelte scaffold *)"
+    ]
+  }
+}
