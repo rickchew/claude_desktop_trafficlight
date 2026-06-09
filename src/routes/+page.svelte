@@ -13,13 +13,16 @@
   let label = $state("已停止");
   let skin = $state<Skin | null>(null);
   let source = $state("");
+  let lang = $state<"zh" | "en">("en");
+  let showLabel = $state(true);
+  let toast = $state<{kind:string;message:string}|null>(null);
 
-  // 来源中文映射
-  const sourceLabels: Record<string, string> = {
-    files: "文件监听",
-    process: "子进程",
-    simulation: "模拟",
-  };
+  // 来源映射（按语言）
+  const sourceLabels = $derived<Record<string, string>>(
+    lang === "en"
+      ? { files: "File watcher", process: "Subprocess", simulation: "Simulation" }
+      : { files: "文件监听", process: "子进程", simulation: "模拟" }
+  );
 
   // 订阅皮肤 store
   $effect(() => {
@@ -38,8 +41,16 @@
 
   onMount(async () => {
     // 右键点击 → 弹出原生系统菜单（切换皮肤 / 调试 / 退出）
+    // - toast 显示期间不响应
+    // - 300ms 内的重复 contextmenu 忽略（macOS native menu 选择菜单项后
+    //   click 漏到 webview 会重新触发 contextmenu）
+    let lastMenuShown = 0;
     const onContextMenu = (e: MouseEvent) => {
       e.preventDefault();
+      if (toast) return;
+      const now = performance.now();
+      if (now - lastMenuShown < 300) return;
+      lastMenuShown = now;
       invoke("show_context_menu", { x: e.screenX, y: e.screenY });
     };
     document.addEventListener("contextmenu", onContextMenu);
@@ -72,11 +83,34 @@
       source = event.payload.source;
     });
 
+    // 监听语言切换
+    const unlistenLang = await listen<{ lang: string }>("overlay:lang-change", (event) => {
+      lang = event.payload.lang === "en" ? "en" : "zh";
+    });
+
+    // 监听 show-label 切换
+    const unlistenShowLabel = await listen<{ show: boolean }>(
+      "overlay:show-label-change",
+      (event) => { showLabel = event.payload.show; },
+    );
+
+    // 监听通知（hooks 安装结果等）
+    const unlistenNotice = await listen<{ kind: string; message: string }>(
+      "overlay:notice",
+      (event) => {
+        toast = event.payload;
+        setTimeout(() => { toast = null; }, 1800);
+      },
+    );
+
     return () => {
       document.removeEventListener("contextmenu", onContextMenu);
       unlistenState();
       unlistenSkin();
       unlistenSource();
+      unlistenLang();
+      unlistenShowLabel();
+      unlistenNotice();
     };
   });
 </script>
@@ -100,11 +134,18 @@
     <div class="traffic-light-wrapper">
       <TrafficLight {colorGroup} {animation} {skin} />
     </div>
-    <StatusText {label} {skin} />
+    {#if showLabel}
+      <StatusText {label} {skin} />
+    {/if}
     {#if source && sourceLabels[source]}
       <div class="source-indicator">{sourceLabels[source]}</div>
     {/if}
   </div>
+  {#if toast}
+    <div class="toast-overlay {toast.kind}">
+      <div class="toast-symbol">{toast.kind === 'ok' ? '✓' : '✕'}</div>
+    </div>
+  {/if}
 </div>
 
 <style>
@@ -153,6 +194,41 @@
 
   .traffic-light-wrapper {
     padding-top: 0;
+  }
+
+  .toast-overlay {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.55);
+    backdrop-filter: blur(4px);
+    z-index: 100;
+    pointer-events: none;
+    animation: fadeIn 0.18s ease-out;
+  }
+  .toast-symbol {
+    font-size: 64px;
+    font-weight: 700;
+    line-height: 1;
+    color: #fff;
+    text-shadow: 0 4px 18px currentColor;
+    animation: popIn 0.32s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+  .toast-overlay.ok .toast-symbol {
+    color: #32D74B;
+  }
+  .toast-overlay.err .toast-symbol {
+    color: #FF453A;
+  }
+  @keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+  @keyframes popIn {
+    from { transform: scale(0.4); opacity: 0; }
+    to { transform: scale(1); opacity: 1; }
   }
 
   .source-indicator {

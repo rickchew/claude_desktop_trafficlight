@@ -162,7 +162,7 @@ impl FileWatcher {
             "colorGroup": state.color_group(),
             "animation": state.animation(),
             "blinkInterval": state.blink_interval_ms(),
-            "label": state.label(),
+            "label": crate::current_label(app_handle, state),
             "timestamp": chrono::Utc::now().to_rfc3339(),
         });
         let _ = app_handle.emit("overlay:state-change", &payload);
