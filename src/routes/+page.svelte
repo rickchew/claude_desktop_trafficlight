@@ -10,7 +10,7 @@
   let state = $state<LightState>("stopped");
   let colorGroup = $state<ColorGroup>("gray");
   let animation = $state<AnimationType>("off");
-  let label = $state("已停止");
+  let label = $state("Stopped");
   let skin = $state<Skin | null>(null);
   let source = $state("");
   let lang = $state<"zh" | "en">("en");

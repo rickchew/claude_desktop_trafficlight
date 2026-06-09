@@ -67,9 +67,6 @@ pub struct MenuStrings {
     pub sim_idle:      &'static str,
     pub sim_done:      &'static str,
     pub tray_tooltip:  &'static str,
-    pub source_files:  &'static str,
-    pub source_process:&'static str,
-    pub source_sim:    &'static str,
 }
 
 pub fn menu_strings(lang: Lang) -> MenuStrings {
@@ -94,9 +91,6 @@ pub fn menu_strings(lang: Lang) -> MenuStrings {
             sim_idle:      "空闲",
             sim_done:      "完成",
             tray_tooltip:  "Claude Code 红绿灯",
-            source_files:  "文件监听",
-            source_process:"子进程",
-            source_sim:    "模拟",
         },
         Lang::En => MenuStrings {
             start_process: "Start subprocess monitor",
@@ -118,9 +112,6 @@ pub fn menu_strings(lang: Lang) -> MenuStrings {
             sim_idle:      "Idle",
             sim_done:      "Done",
             tray_tooltip:  "Claude Code Traffic Light",
-            source_files:  "File watcher",
-            source_process:"Subprocess",
-            source_sim:    "Simulation",
         },
     }
 }

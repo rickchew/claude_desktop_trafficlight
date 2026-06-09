@@ -1,6 +1,3 @@
-// 开发阶段允许未使用的代码
-#![allow(dead_code)]
-
 mod detector;
 mod file_watcher;
 mod i18n;
@@ -107,19 +104,6 @@ pub struct StatePayload {
     pub timestamp: String,
 }
 
-impl From<state::LightState> for StatePayload {
-    fn from(ls: state::LightState) -> Self {
-        Self {
-            state: format!("{:?}", ls).to_lowercase(),
-            color_group: ls.color_group().to_string(),
-            animation: ls.animation().to_string(),
-            blink_interval: ls.blink_interval_ms(),
-            label: ls.label().to_string(),
-            timestamp: chrono::Utc::now().to_rfc3339(),
-        }
-    }
-}
-
 fn make_payload(app: &AppHandle, ls: state::LightState) -> StatePayload {
     StatePayload {
         state: format!("{:?}", ls).to_lowercase(),
@@ -166,7 +150,7 @@ fn stop_monitor(app: AppHandle, state: State<AppState>) -> Result<(), String> {
 fn start_file_watcher(app: AppHandle, state: State<AppState>) -> Result<(), String> {
     let mut fw = state.file_watcher.lock().map_err(|e| e.to_string())?;
     if fw.is_none() {
-        *fw = Some(file_watcher::FileWatcher::new(None));
+        *fw = Some(file_watcher::FileWatcher::new());
     }
     if let Some(ref mut watcher) = *fw {
         let result = watcher.start(app.clone());
@@ -313,7 +297,7 @@ fn handle_menu_event(app_handle: &AppHandle, id: &str) {
             let state = app_handle.state::<AppState>();
             if let Ok(mut fw) = state.file_watcher.lock() {
                 if fw.is_none() {
-                    *fw = Some(file_watcher::FileWatcher::new(None));
+                    *fw = Some(file_watcher::FileWatcher::new());
                 }
                 if let Some(ref mut watcher) = *fw {
                     if watcher.start(app_handle.clone()).is_ok() {
@@ -399,99 +383,26 @@ fn handle_menu_event(app_handle: &AppHandle, id: &str) {
     }
 }
 
-/// 显示右键上下文菜单（弹出原生系统菜单）
-#[tauri::command]
-async fn show_context_menu(app: AppHandle, state: State<'_, AppState>, _x: f64, _y: f64) -> Result<(), String> {
-    let lang = *state.lang.lock().map_err(|e| e.to_string())?;
-    let show_label_now = *state.show_label.lock().map_err(|e| e.to_string())?;
-    let m = menu_strings(lang);
-    let skin_names = {
-        let sm = state.skin_manager.lock().map_err(|e| e.to_string())?;
-        sm.list().into_iter().map(|s| s.to_string()).collect::<Vec<_>>()
-    };
-
-    let mut skin_sub = SubmenuBuilder::new(&app, m.switch_skin);
-    for name in &skin_names {
-        let item = MenuItemBuilder::with_id(format!("skin-{}", name), name.as_str())
-            .build(&app).map_err(|e| e.to_string())?;
-        skin_sub = skin_sub.item(&item);
-    }
-    let skin_submenu = skin_sub.build().map_err(|e| e.to_string())?;
-
-    let mut debug_sub = SubmenuBuilder::new(&app, m.debug);
-    for (id, label) in &[
-        ("simulate-starting", m.sim_starting),
-        ("simulate-working", m.sim_working),
-        ("simulate-thinking", m.sim_thinking),
-        ("simulate-attention", m.sim_attention),
-        ("simulate-error", m.sim_error),
-        ("simulate-idle", m.sim_idle),
-        ("simulate-done", m.sim_done),
-    ] {
-        let item = MenuItemBuilder::with_id(*id, *label)
-            .build(&app).map_err(|e| e.to_string())?;
-        debug_sub = debug_sub.item(&item);
-    }
-    let debug_submenu = debug_sub.build().map_err(|e| e.to_string())?;
-
-    let lang_sub = SubmenuBuilder::new(&app, m.language)
-        .item(&MenuItemBuilder::with_id("lang-zh", "中文").build(&app).map_err(|e| e.to_string())?)
-        .item(&MenuItemBuilder::with_id("lang-en", "English").build(&app).map_err(|e| e.to_string())?)
-        .build().map_err(|e| e.to_string())?;
-
-    let start_mon = MenuItemBuilder::with_id("start-monitor", m.start_process)
-        .build(&app).map_err(|e| e.to_string())?;
-    let start_fw = MenuItemBuilder::with_id("start-filewatcher", m.start_files)
-        .build(&app).map_err(|e| e.to_string())?;
-    let stop_mon = MenuItemBuilder::with_id("stop-monitor", m.stop_monitor)
-        .build(&app).map_err(|e| e.to_string())?;
-
-    let install = MenuItemBuilder::with_id("install-hooks", m.setup_hooks)
-        .build(&app).map_err(|e| e.to_string())?;
-    let toggle_label = MenuItemBuilder::with_id(
-        "toggle-label",
-        if show_label_now { m.hide_label } else { m.show_label },
-    ).build(&app).map_err(|e| e.to_string())?;
-
-    let quit = MenuItemBuilder::with_id("quit", m.quit)
-        .build(&app).map_err(|e| e.to_string())?;
-
-    let menu = MenuBuilder::new(&app)
-        .item(&start_mon)
-        .item(&start_fw)
-        .item(&stop_mon)
-        .separator()
-        .item(&install)
-        .item(&toggle_label)
-        .separator()
-        .item(&skin_submenu)
-        .item(&lang_sub)
-        .separator()
-        .item(&debug_submenu)
-        .separator()
-        .item(&quit)
-        .build()
-        .map_err(|e| e.to_string())?;
-
-    let window = app.get_webview_window("main").ok_or("No main window".to_string())?;
-
-    app.run_on_main_thread(move || {
-        let _ = menu.popup(window.as_ref().window().clone());
-    })
-    .map_err(|e| e.to_string())
-}
-
-/// 设置系统托盘
-fn setup_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
-    let lang = *app.state::<AppState>().lang.lock().unwrap();
-    let show_label_now = *app.state::<AppState>().show_label.lock().unwrap();
+/// Build the menu used by both the right-click context menu and the tray.
+/// `include_window_toggle` adds a "Show / hide window" entry at the top
+/// (tray menu only).
+fn build_menu(
+    app: &AppHandle,
+    include_window_toggle: bool,
+) -> Result<tauri::menu::Menu<tauri::Wry>, tauri::Error> {
+    let app_state = app.state::<AppState>();
+    let lang = *app_state.lang.lock().expect("lang mutex poisoned");
+    let show_label_now = *app_state.show_label.lock().expect("show_label mutex poisoned");
     let m = menu_strings(lang);
 
-    let skin_names = {
-        let state = app.state::<AppState>();
-        let sm = state.skin_manager.lock().unwrap();
-        sm.list().into_iter().map(|s| s.to_string()).collect::<Vec<_>>()
-    };
+    let skin_names: Vec<String> = app_state
+        .skin_manager
+        .lock()
+        .expect("skin_manager mutex poisoned")
+        .list()
+        .into_iter()
+        .map(|s| s.to_string())
+        .collect();
 
     let mut skin_sub = SubmenuBuilder::new(app, m.switch_skin);
     for name in &skin_names {
@@ -527,14 +438,16 @@ fn setup_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
     let toggle_label = MenuItemBuilder::with_id(
         "toggle-label",
         if show_label_now { m.hide_label } else { m.show_label },
-    ).build(app)?;
-    let toggle = MenuItemBuilder::with_id("toggle", m.toggle).build(app)?;
+    )
+    .build(app)?;
     let quit = MenuItemBuilder::with_id("quit", m.quit).build(app)?;
 
-    let menu = MenuBuilder::new(app)
-        .item(&toggle)
-        .separator()
-        .item(&start_mon)
+    let mut mb = MenuBuilder::new(app);
+    if include_window_toggle {
+        let toggle = MenuItemBuilder::with_id("toggle", m.toggle).build(app)?;
+        mb = mb.item(&toggle).separator();
+    }
+    mb.item(&start_mon)
         .item(&start_fw)
         .item(&stop_mon)
         .separator()
@@ -543,25 +456,38 @@ fn setup_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
         .separator()
         .item(&skin_submenu)
         .item(&lang_sub)
+        .separator()
         .item(&debug_submenu)
         .separator()
         .item(&quit)
-        .build()?;
+        .build()
+}
 
-    let mut tray = TrayIconBuilder::new()
-        .tooltip(m.tray_tooltip)
-        .menu(&menu);
+/// 显示右键上下文菜单（弹出原生系统菜单）
+#[tauri::command]
+async fn show_context_menu(app: AppHandle, _x: f64, _y: f64) -> Result<(), String> {
+    let menu = build_menu(&app, false).map_err(|e| e.to_string())?;
+    let window = app.get_webview_window("main").ok_or("No main window".to_string())?;
+    app.run_on_main_thread(move || {
+        let _ = menu.popup(window.as_ref().window().clone());
+    })
+    .map_err(|e| e.to_string())
+}
 
+/// 设置系统托盘
+fn setup_tray(app: &AppHandle) -> Result<(), Box<dyn std::error::Error>> {
+    let lang = *app.state::<AppState>().lang.lock().unwrap();
+    let m = menu_strings(lang);
+    let menu = build_menu(app, true)?;
+
+    let mut tray = TrayIconBuilder::new().tooltip(m.tray_tooltip).menu(&menu);
     if let Some(icon) = app.default_window_icon().cloned() {
         tray = tray.icon(icon);
     }
-
-    // 菜单事件处理
     tray = tray.on_menu_event(move |tray, event| {
         let app = tray.app_handle();
         handle_menu_event(&app, event.id().as_ref());
     });
-
     tray.build(app)?;
     Ok(())
 }
@@ -636,7 +562,7 @@ pub fn run() {
                 let state = handle.state::<AppState>();
                 if let Ok(mut fw) = state.file_watcher.lock() {
                     if fw.is_none() {
-                        *fw = Some(file_watcher::FileWatcher::new(None));
+                        *fw = Some(file_watcher::FileWatcher::new());
                     }
                     if let Some(ref mut watcher) = *fw {
                         if watcher.start(handle.clone()).is_ok() {

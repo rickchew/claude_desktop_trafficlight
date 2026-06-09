@@ -1,5 +1,4 @@
 use serde::{Deserialize, Serialize};
-use std::fmt;
 use std::time::Instant;
 
 /// 红绿灯状态枚举
@@ -62,25 +61,6 @@ impl LightState {
         }
     }
 
-    /// 获取中文状态名称
-    pub fn label(&self) -> &str {
-        match self {
-            LightState::Starting => "启动中",
-            LightState::Working => "工作中",
-            LightState::Thinking => "思考中",
-            LightState::Attention => "需要交互",
-            LightState::Error => "错误",
-            LightState::Idle => "空闲",
-            LightState::Done => "完成",
-            LightState::Stopped => "已停止",
-        }
-    }
-}
-
-impl fmt::Display for LightState {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.label())
-    }
 }
 
 /// 状态机 — 管理状态转换和超时

@@ -1,69 +1,69 @@
 #!/bin/bash
 # Claude Code Overlay Hook Script
-# 配置：在 .claude/settings.json 中设置 hooks 即可
-# 该脚本在 Claude Code 的各种生命周期事件中被调用，
-# 将当前状态写入 /tmp/claude-overlay/state.json 供 Overlay 读取
+#
+# Called by Claude Code lifecycle hooks. Reads stdin JSON (which includes
+# session_id), then writes a per-session JSON file under:
+#   ~/.claude-trafficlight/sessions/<session_id>.json
+#
+# The overlay's Rust file_watcher reads the directory, maintains a session
+# map, and computes the aggregate state with attention > error > working > ...
+# priority. Multi-session safe; no locks required (one writer per file).
 
-set -euo pipefail
+STATE="${1:-stopped}"
+MESSAGE="${2:-}"
 
-STATE_DIR="${TMPDIR:-/tmp}/claude-overlay"
-STATE_FILE="$STATE_DIR/state.json"
+STDIN_JSON=""
+if [ ! -t 0 ]; then
+  STDIN_JSON=$(cat)
+fi
 
-# 确保目录存在
-mkdir -p "$STATE_DIR"
+# Single python3 invocation does parse + timestamp + atomic write.
+STATE="$STATE" MESSAGE="$MESSAGE" STDIN_JSON="$STDIN_JSON" /usr/bin/python3 - <<'PY'
+import datetime
+import json
+import os
+import re
+import sys
+import tempfile
 
-# 写入状态
-write_state() {
-  local state="$1"
-  local message="${2:-}"
-  local timestamp
-  timestamp=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+state = os.environ.get("STATE", "stopped")
+message = os.environ.get("MESSAGE", "")
+raw = os.environ.get("STDIN_JSON", "")
 
-  cat > "$STATE_FILE" << EOF
-{
-  "state": "$state",
-  "message": $(echo "$message" | jq -Rs '.' 2>/dev/null || echo "\"$message\""),
-  "timestamp": "$timestamp"
+sessions_dir = os.path.expanduser("~/.claude-trafficlight/sessions")
+os.makedirs(sessions_dir, exist_ok=True)
+
+session_id = "default"
+if raw.strip():
+    try:
+        data = json.loads(raw)
+        candidate = data.get("session_id") or data.get("sessionId") or ""
+        if candidate:
+            # Sanitize: only allow filename-safe characters
+            candidate = re.sub(r"[^A-Za-z0-9._-]", "_", str(candidate))
+            if candidate:
+                session_id = candidate
+    except Exception:
+        pass
+
+payload = {
+    "session_id": session_id,
+    "state": state,
+    "message": message,
+    "timestamp": datetime.datetime.utcnow().isoformat() + "Z",
 }
-EOF
-}
 
-# 根据 Hook 事件类型处理
-case "${CLAUDE_HOOK:-}" in
-  "onStartup")
-    write_state "starting" "Claude Code 启动中"
-    ;;
-  "onStartupComplete")
-    write_state "idle" "Claude Code 就绪"
-    ;;
-  "onShutdown")
-    write_state "stopped" "Claude Code 已停止"
-    ;;
-  "onTaskStart")
-    write_state "working" "任务开始"
-    ;;
-  "onTaskStop")
-    write_state "done" "任务完成"
-    ;;
-  "onSpawn")
-    write_state "working" "子任务启动"
-    ;;
-  "onRespawn")
-    write_state "working" "子任务恢复"
-    ;;
-  "onWait")
-    write_state "thinking" "等待输入"
-    ;;
-  "onPermissionRequest")
-    write_state "attention" "请求权限"
-    ;;
-  "onError")
-    write_state "error" "发生错误"
-    ;;
-  *)
-    # 如果传递了参数，直接使用
-    if [ $# -ge 1 ]; then
-      write_state "$1" "${2:-}"
-    fi
-    ;;
-esac
+session_file = os.path.join(sessions_dir, f"{session_id}.json")
+fd, tmp = tempfile.mkstemp(dir=sessions_dir, prefix=f".{session_id}.", suffix=".tmp")
+try:
+    with os.fdopen(fd, "w") as f:
+        json.dump(payload, f)
+    os.replace(tmp, session_file)
+except Exception:
+    try:
+        os.unlink(tmp)
+    except OSError:
+        pass
+PY
+
+exit 0
