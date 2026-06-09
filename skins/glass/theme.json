@@ -1,0 +1,13 @@
+{
+  "name": "glass",
+  "description": "毛玻璃半透明",
+  "lights": {
+    "red":    { "on": "#FF453A", "off": "#3A1614", "glow": "rgba(255,69,58,0.85)" },
+    "yellow": { "on": "#FFD60A", "off": "#3A3008", "glow": "rgba(255,214,10,0.85)" },
+    "green":  { "on": "#32D74B", "off": "#143A1E", "glow": "rgba(50,215,75,0.85)" },
+    "gray":   { "on": "#98989D", "off": "#2C2C2E", "glow": null }
+  },
+  "background": { "color": "#000000", "opacity": 0.45, "blur": true },
+  "border":     { "color": "rgba(255,255,255,0.12)", "radius": "18px", "width": "1px" },
+  "label":      { "color": "#FFFFFF", "size": "11px", "fontFamily": "system-ui, -apple-system, sans-serif" }
+}

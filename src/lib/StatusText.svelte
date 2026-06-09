@@ -24,7 +24,7 @@
 <style>
   .status-text {
     text-align: center;
-    padding: 0 12px 8px;
+    padding: 8px 12px 4px;
     user-select: none;
   }
 

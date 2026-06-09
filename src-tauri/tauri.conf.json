@@ -10,11 +10,12 @@
     "frontendDist": "../build"
   },
   "app": {
+    "macOSPrivateApi": true,
     "windows": [
       {
         "title": "Claude Code Overlay",
-        "width": 130,
-        "height": 280,
+        "width": 88,
+        "height": 220,
         "resizable": false,
         "decorations": false,
         "transparent": true,

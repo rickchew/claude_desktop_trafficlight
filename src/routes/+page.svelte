@@ -26,6 +26,16 @@
     skin = $currentSkin;
   });
 
+  // 把 hex 背景色拆成 rgba 用的三分量
+  const bgRgb = $derived.by(() => {
+    const hex = (skin?.background.color ?? "#1C1C1E").replace("#", "");
+    return {
+      r: parseInt(hex.slice(0, 2), 16),
+      g: parseInt(hex.slice(2, 4), 16),
+      b: parseInt(hex.slice(4, 6), 16),
+    };
+  });
+
   onMount(async () => {
     // 右键点击 → 弹出原生系统菜单（切换皮肤 / 调试 / 退出）
     const onContextMenu = (e: MouseEvent) => {
@@ -79,7 +89,9 @@
 <div
   class="overlay"
   style="
-    --bg-color: {skin?.background.color ?? '#1C1C1E'};
+    --bg-r: {bgRgb.r};
+    --bg-g: {bgRgb.g};
+    --bg-b: {bgRgb.b};
     --bg-opacity: {skin?.background.opacity ?? 0.85};
     --border-radius: {skin?.border.radius ?? '16px'};
   "
@@ -108,12 +120,21 @@
     position: relative;
     width: 100vw;
     height: 100vh;
-    background: var(--bg-color);
-    opacity: var(--bg-opacity);
+    background-image:
+      linear-gradient(
+        180deg,
+        rgba(255, 255, 255, 0.10) 0%,
+        rgba(255, 255, 255, 0.03) 18%,
+        rgba(0, 0, 0, 0.18) 100%
+      );
+    background-color: rgba(var(--bg-r), var(--bg-g), var(--bg-b), var(--bg-opacity));
     border-radius: var(--border-radius);
     overflow: hidden;
     backdrop-filter: blur(20px);
     -webkit-backdrop-filter: blur(20px);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.18),
+      inset 0 -1px 0 rgba(0, 0, 0, 0.35);
   }
 
   .drag-region {
@@ -131,7 +152,7 @@
   }
 
   .traffic-light-wrapper {
-    padding-top: 4px;
+    padding-top: 0;
   }
 
   .source-indicator {

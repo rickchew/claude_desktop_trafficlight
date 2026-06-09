@@ -25,12 +25,12 @@
   },
   "background": {
     "color": "#1C1C1E",
-    "opacity": 0.85,
-    "blur": true
+    "opacity": 1.0,
+    "blur": false
   },
   "border": {
     "color": "transparent",
-    "radius": "12px",
+    "radius": "16px",
     "width": "0px"
   },
   "label": {

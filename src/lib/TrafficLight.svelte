@@ -65,7 +65,6 @@
         <div class="light-inner"></div>
         <div class="light-reflect"></div>
       </div>
-      <div class="light-glow"></div>
     </div>
   {/each}
 </div>
@@ -76,7 +75,7 @@
     flex-direction: column;
     align-items: center;
     gap: 14px;
-    padding: 16px 12px;
+    padding: 3px 3px 6px;
   }
 
   .light-container {
@@ -117,19 +116,12 @@
     pointer-events: none;
   }
 
-  .light-glow {
-    position: absolute;
-    inset: -8px;
-    border-radius: 50%;
-    background: var(--light-glow);
-    filter: blur(8px);
-    opacity: 0;
-    transition: opacity 0.3s ease;
-    pointer-events: none;
-  }
-
-  .light-container.active .light-glow {
-    opacity: 0.6;
+  .light-container.active .light {
+    box-shadow:
+      inset 0 -2px 4px rgba(0, 0, 0, 0.3),
+      inset 0 2px 4px rgba(255, 255, 255, 0.1),
+      0 0 12px 2px var(--light-glow),
+      0 0 24px 4px var(--light-glow);
   }
 
   /* 闪烁动画 */
