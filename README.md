@@ -2,6 +2,18 @@
 
 半透明桌面红绿灯挂件，监控 Claude Code CLI 的工作状态，通过红黄绿三色灯提示是否需要交互。
 
+> **致谢 / Credits**
+>
+> 本项目原作者：[@kabumos](https://github.com/kabumos) — 上游仓库 [kabumos/claude-code-overlay](https://github.com/kabumos/claude-code-overlay)。所有核心功能、设计、Rust/Svelte 实现均由原作者完成。
+>
+> 本 fork 仅做：
+> - **macOS 兼容性修复** — 移除硬编码的 Windows MSVC 构建目标、启用 `macOSPrivateApi` 让窗口真正透明
+> - **UI 微调** — 调整窗口尺寸、间距，把灯的光晕从 `filter:blur`（小尺寸下方块伪影）改成 `box-shadow`（真圆形）、面板加 inset 高光做 3D 感
+> - **新增 `glass` 主题**
+> - **macOS .app + .dmg 打包**（Developer ID 签名 + Apple 公证）
+>
+> Releases 里提供 macOS 已签名 + 公证的 `.dmg`，双击直接安装运行。
+
 ## 功能
 
 - **🟢 绿灯** — 空闲 / 任务完成
